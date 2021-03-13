@@ -1,0 +1,103 @@
+#include <LiquidCrystal.h>
+#include <SoftwareSerial.h>
+const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 6;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+SoftwareSerial mySerial(0, 1);
+float aatual,prop,inte,Kp=2.5,Ki=3.0,Deadband=1.0,E,Eant;
+float Setpoint,Input,Output,tdecorrido = 0,delta,voltage;
+int gate_trigger,aux=0,a = 0,sensorValue,Output1,comp_erro;
+String temp_sp="";
+const byte zerocrossPin = 2; 
+
+void setup() {
+   mySerial.begin(9600);
+   mySerial.println("Controle de Temperatura");
+   mySerial.println("Digite uma valor desejado de 1 a 80 para ligar: ");
+   lcd.begin(16, 2);
+   lcd.print("Controlador de ");
+   lcd.setCursor(0, 1);
+   lcd.print(" Temperatura  ");  
+   delay(2500);
+   lcd.clear();
+   lcd.print("Ligue o app HMI");
+   lcd.setCursor(0, 1);
+   lcd.print("no Smartphone  ");  
+   delay(2500);
+   lcd.clear();
+   pinMode(10, OUTPUT);
+   pinMode(9,OUTPUT);
+}
+void loop() {
+  if (mySerial.available()) {
+    detachInterrupt(digitalPinToInterrupt(zerocrossPin));
+    delay(20);
+    temp_sp=mySerial.readString();
+    delay(10);
+    Setpoint = temp_sp.toInt();
+   }
+   else{
+      if(Setpoint >0 && Setpoint<=80){
+         
+         if(a==0){
+          mySerial.println("Controle Ligado! Digite 0 para desligar ou outro valor de temperatura.");
+          a=1;
+         }
+         attachInterrupt(digitalPinToInterrupt(zerocrossPin),trigger,FALLING);
+         
+    }
+    else{
+      
+      //mySerial.println("Valor digitado incorreto! Escreva outro valor na faixa indicada: ");
+      detachInterrupt(digitalPinToInterrupt(zerocrossPin));
+      //digitalWrite(9,LOW);
+     }
+    lcd.clear();
+    sensorValue = analogRead(A0);
+    voltage = sensorValue * (5000.0f / 1024.0f);
+    Input = voltage/10.0f;
+    if(aux==0){
+      //E[0]=Setpoint-Input;
+      aux=1;
+    }
+    gate_trigger = -32.6797*Output1+8333.3333;
+    delta = ((millis() - tdecorrido))/1000.0;
+    tdecorrido = millis();
+    E=Setpoint-Input;
+    prop=E*Kp;
+    inte=(E-Eant)*Ki*delta;
+    Eant=E;
+    Output=prop+inte;
+    Output1=comp_erro/16 + Output;
+    if (Output1>200){
+       Output1=200;
+    }
+    if (Output1<1){
+       Output1=0;
+    }
+    if(Output1>0){
+      digitalWrite(9,HIGH);
+    }else{
+      digitalWrite(9,LOW);
+    }
+    lcd.print("SP:");
+    lcd.print(Setpoint);
+    lcd.print(" PV:");
+    lcd.print(Input);
+    lcd.setCursor(0, 1);
+    lcd.print("Potencia %: "); 
+    lcd.print(Output1/2); 
+    if (Output>0 || Setpoint>Input-Deadband){
+      comp_erro++;
+      delay(250);}
+    if (Output<0 || Setpoint<Input+Deadband){
+      comp_erro--;
+      delay(250);
+     }
+  }
+}
+void trigger(){
+      delayMicroseconds(gate_trigger);
+      digitalWrite(10,HIGH);
+      delayMicroseconds(50);
+      digitalWrite(10,LOW);  
+}
